@@ -1,0 +1,17 @@
+<component name="CopyrightManager">
+  <settings>
+    <module2copyright>
+      <element module="All" copyright="gplv3" />
+    </module2copyright>
+    <LanguageOptions name="Python">
+      <option name="fileTypeOverride" value="3" />
+      <option name="block" value="false" />
+      <option name="separateBefore" value="true" />
+      <option name="separateAfter" value="true" />
+      <option name="lenBefore" value="88" />
+      <option name="lenAfter" value="88" />
+      <option name="box" value="true" />
+      <option name="filler" value="-" />
+    </LanguageOptions>
+  </settings>
+</component>
