@@ -1,6 +1,11 @@
 # cstruct
 Read primitive data from a binary stream using a C-like struct format.
 
+# Installing
+```
+ python -m pip install -U git+https://github.com/yntha/cstruct.git
+```
+
 ### Example Usage
 ```py
 # 4s   - next 4 bytes as a byte string
