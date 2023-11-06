@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/cstruct.iml" filepath="$PROJECT_DIR$/.idea/cstruct.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../cstruct-deco/.idea/cstruct.iml" filepath="$PROJECT_DIR$/../cstruct-deco/.idea/cstruct.iml" />
     </modules>
   </component>
 </project>

@@ -24,20 +24,131 @@ class InvalidFormat(Exception):
     pass
 
 
+class IntProxy(int):
+    def __init__(self, *args, **kwargs):
+        self._size = 0
+        self._format = ""
+
+    @property
+    def byte_length(self):
+        return self._size
+
+    @property
+    def string_format(self):
+        return self._format
+
+    def setup(self, size: int, data_format: str):
+        self._size = size
+        self._format = data_format
+
+
+class BoolProxy(int):
+    def __init__(self, *args, **kwargs):
+        self._size = 0
+        self._format = ""
+
+    def __repr__(self):
+        return str(bool(self))
+
+    def __bool__(self):
+        return self == 1
+
+    @property
+    def byte_length(self):
+        return self._size
+
+    @property
+    def string_format(self):
+        return self._format
+
+    def setup(self, size: int, data_format: str):
+        self._size = size
+        self._format = data_format
+
+        return self
+
+
+class FloatProxy(float):
+    def __init__(self, *args, **kwargs):
+        self._size = 0
+        self._format = ""
+
+    @property
+    def byte_length(self):
+        return self._size
+
+    @property
+    def string_format(self):
+        return self._format
+
+    def setup(self, size: int, data_format: str):
+        self._size = size
+        self._format = data_format
+
+
+class BytesProxy(bytes):
+    def __init__(self, *args, **kwargs):
+        self._size = 0
+        self._format = ""
+
+    @property
+    def byte_length(self):
+        return self._size
+
+    @property
+    def string_format(self):
+        return self._format
+
+    def setup(self, size: int, data_format: str):
+        self._size = size
+        self._format = data_format
+
+
 def _read_cstruct(cls, stream, offset: int = -1):
     return _CStructLexer.parse_struct(cls, stream, offset)
 
+
+def _post_init(self):
+    for field, field_info in self.__dataclass_fields__.items():
+        # the parameters passed to the dataclass constructor individually
+        # contain supplementary information about the field such as its
+        # format and size. thus, unpack that information and set it on the
+        # proxy object below.
+        field_object = getattr(self, field)
+
+        if field_object is None:
+            continue
+
+        field_value = field_object[0]
+        field_format = field_object[1]
+        field_size = field_object[2]
+
+        if field_info.type is int:
+            setattr(self, field, IntProxy(field_value))
+        elif field_info.type is bool:
+            setattr(self, field, BoolProxy(field_value))
+        elif field_info.type is float:
+            setattr(self, field, FloatProxy(field_value))
+        elif field_info.type is bytes:
+            setattr(self, field, BytesProxy(field_value))
+
+        # set the proxy's supplementary attributes
+        field_object = getattr(self, field)
+        field_object.setup(field_size, field_format)
+
+
 def cstruct(data_format: str, byte_order: str = "little"):
     def decorate(cls):
-        format = data_format
+        struct_format = data_format
         base_class = cls.__base__
 
         if base_class is not object and hasattr(base_class, "primitive_format"):
-            format = base_class.primitive_format + data_format
+            struct_format = base_class.primitive_format + data_format
 
-        setattr(cls, "primitive_format", format)
+        setattr(cls, "primitive_format", struct_format)
         setattr(cls, "data_byte_order", byte_order)
         setattr(cls, "read", classmethod(_read_cstruct))
+        setattr(cls, "__post_init__", _post_init)
 
         return dataclass(cls)
 
@@ -62,9 +173,11 @@ class _CStructLexer:
         size = struct.calcsize(format_ch)
 
         for _ in range(count):
-            self.values.append(
-                struct.unpack(self.byte_order + format_ch, self.stream.read(size))[0]
-            )
+            self.values.append([
+                struct.unpack(self.byte_order + format_ch, self.stream.read(size))[0],
+                format_ch,
+                size
+            ])
 
             expanded += format_ch
 
@@ -92,7 +205,7 @@ class _CStructLexer:
                 index_num = int(self.digit_buffer)
 
                 try:
-                    refd_value = self.values[index_num]
+                    refd_value = self.values[index_num][0]
                 except IndexError:
                     raise InvalidFormat("Index was out of range.")
 
@@ -127,7 +240,7 @@ class _CStructLexer:
                 number = int(self.digit_buffer)
 
                 if format_ch == "s":
-                    self.values.append(self.stream.read(number))
+                    self.values.append([self.stream.read(number), format_ch, number])
                     self.digit_buffer = ""
 
                     continue
@@ -137,11 +250,13 @@ class _CStructLexer:
 
                 continue
 
-            self.values.append(
+            self.values.append([
                 struct.unpack(
                     self.byte_order + char, self.stream.read(struct.calcsize(char))
-                )[0]
-            )
+                )[0],
+                char,
+                struct.calcsize(char)
+            ])
             self.format += char
 
     @classmethod
