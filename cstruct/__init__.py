@@ -183,6 +183,10 @@ class _CStructLexer:
 
         return expanded
 
+    def _read_byte_string(self, size: int):
+        self.values.append([self.stream.read(size), f"{size}s", size])
+        self.digit_buffer = ""
+
     def parse(self):
         skip_flag = False
 
@@ -223,7 +227,17 @@ class _CStructLexer:
 
                     continue
 
-                self.format += self._expand(refd_value, self.data_format[index + 1])
+                format_ch = self.data_format[index + 1]
+
+                if format_ch == "s":
+                    self._read_byte_string(refd_value)
+
+                    skip_flag = True
+                    self.paren_open = False
+
+                    continue
+
+                self.format += self._expand(refd_value, format_ch)
                 self.digit_buffer = ""
 
                 skip_flag = True
@@ -240,8 +254,7 @@ class _CStructLexer:
                 number = int(self.digit_buffer)
 
                 if format_ch == "s":
-                    self.values.append([self.stream.read(number), format_ch, number])
-                    self.digit_buffer = ""
+                    self._read_byte_string(number)
 
                     continue
 
