@@ -49,3 +49,7 @@ print(parsed.c.string_format)  # '8s'
 ```
 
 For all the standard struct format characters, see https://docs.python.org/3/library/struct.html?highlight=struct#format-characters.
+
+### To-Do List
+* Make cstruct classes immutable
+* Eventually make them mutable with the introduction of the cstruct serializer(python dataclass -> binary data)
