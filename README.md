@@ -41,6 +41,11 @@ parsed = x.read(s)
 print(parsed.__dict__)
 # output:
 # {'a': b'(F\x1c\xe8', 'b': 1, 'z': -67 , 'c': b'\x9f~h<\xdd \x18\x9e', 'd': 1251103937, 'e': 3190139716, 'f': -1358331, 'g': -976955348}
+
+# you can see the size and the string format of the fields, too:
+print(parsed.c.byte_length)  # 8
+print(parsed.g.byte_length)  # 4
+print(parsed.c.string_format)  # '8s'
 ```
 
 For all the standard struct format characters, see https://docs.python.org/3/library/struct.html?highlight=struct#format-characters.
