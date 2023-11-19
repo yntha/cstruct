@@ -18,6 +18,7 @@
 import struct
 import sys
 import dataclasses
+import enum
 
 from dataclasses import dataclass
 
@@ -98,6 +99,8 @@ def _collect_metadata(class_obj: dataclass) -> _StructMetadata:
                 value_list.append(item[0])
 
             setattr(class_obj, field.name, value_list)
+        elif issubclass(field.type, enum.Enum):
+            setattr(class_obj, field.name, field.type(field_value))
         else:
             setattr(class_obj, field.name, field_value)
 
