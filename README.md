@@ -11,7 +11,7 @@ import cstruct
 class test:
     a: int
     b: int
-    c: list  # is pad byte
+    c: list
     d: list
 
 
