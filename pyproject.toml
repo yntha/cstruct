@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "cstruct-deco"
-version = "0.1.0"
+version = "0.2.0"
 description = "Read primitive data from a binary stream using a C-like struct format."
 authors = ["yntha <bguznvjk@gmail.com>"]
 license = "GPL-3.0-or-later"

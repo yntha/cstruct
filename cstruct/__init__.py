@@ -16,105 +16,71 @@
 
 
 import struct
+import sys
+import dataclasses
 
 from dataclasses import dataclass
+
+
+# check if pyleb128 is installed to add support for the LEB128 format
+try:
+    import pyleb128
+
+    from pyleb128 import uleb128, sleb128, leb128
+except ImportError:
+    pass
+
+ULEB128_FORMAT_CH = "U"
+ULEB128P1_FORMAT_CH = chr(ord(ULEB128_FORMAT_CH) + 1)
+SLEB128_FORMAT_CH = "S"
+
+
+def _has_leb128():
+    return "pyleb128" in sys.modules
 
 
 class InvalidFormat(Exception):
     pass
 
 
-class IntProxy(int):
-    def __init__(self, *args, **kwargs):
-        self._size = 0
-        self._format = ""
-
-    @property
-    def byte_length(self):
-        return self._size
-
-    @property
-    def string_format(self):
-        return self._format
-
-    def setup(self, size: int, data_format: str):
-        self._size = size
-        self._format = data_format
-
-
-class BoolProxy(int):
-    def __init__(self, *args, **kwargs):
-        self._size = 0
-        self._format = ""
+@dataclass(frozen=True)
+class _MetadataItem:
+    format: str
+    size: int
 
     def __repr__(self):
-        return str(bool(self))
+        return str(self.__dict__)
 
-    def __bool__(self):
-        return self == 1
-
-    @property
-    def byte_length(self):
-        return self._size
-
-    @property
-    def string_format(self):
-        return self._format
-
-    def setup(self, size: int, data_format: str):
-        self._size = size
-        self._format = data_format
-
-        return self
+    def __str__(self):
+        return f"{self.format} ({self.size} bytes)"
 
 
-class FloatProxy(float):
-    def __init__(self, *args, **kwargs):
-        self._size = 0
-        self._format = ""
+class _StructMetadata:
+    def add_item(self, name: str, metadata_item: _MetadataItem):
+        setattr(self, name, metadata_item)
 
-    @property
-    def byte_length(self):
-        return self._size
+    def __getitem__(self, item):
+        return (
+            getattr(self, item)
+            if isinstance(item, str)
+            else [*self.__dict__.values()][item]
+        )
 
-    @property
-    def string_format(self):
-        return self._format
+    def __repr__(self):
+        return str(self.__dict__)
 
-    def setup(self, size: int, data_format: str):
-        self._size = size
-        self._format = data_format
-
-
-class BytesProxy(bytes):
-    def __init__(self, *args, **kwargs):
-        self._size = 0
-        self._format = ""
-
-    @property
-    def byte_length(self):
-        return self._size
-
-    @property
-    def string_format(self):
-        return self._format
-
-    def setup(self, size: int, data_format: str):
-        self._size = size
-        self._format = data_format
+    def __str__(self):
+        return "\n".join([f"{key}: {value}" for key, value in self.__dict__.items()])
 
 
-def _read_cstruct(cls, stream, offset: int = -1):
-    return _CStructLexer.parse_struct(cls, stream, offset)
+def _collect_metadata(class_obj: dataclass) -> _StructMetadata:
+    metadata = _StructMetadata()
 
-
-def _post_init(self):
-    for field, field_info in self.__dataclass_fields__.items():
+    for field in dataclasses.fields(class_obj):
         # the parameters passed to the dataclass constructor individually
         # contain supplementary information about the field such as its
-        # format and size. thus, unpack that information and set it on the
-        # proxy object below.
-        field_object = getattr(self, field)
+        # format and size.
+        field_object = getattr(class_obj, field.name)
 
         if field_object is None:
             continue
@@ -123,18 +89,34 @@ def _post_init(self):
         field_format = field_object[1]
         field_size = field_object[2]
 
-        if field_info.type is int:
-            setattr(self, field, IntProxy(field_value))
-        elif field_info.type is bool:
-            setattr(self, field, BoolProxy(field_value))
-        elif field_info.type is float:
-            setattr(self, field, FloatProxy(field_value))
-        elif field_info.type is bytes:
-            setattr(self, field, BytesProxy(field_value))
+        metadata.add_item(field.name, _MetadataItem(field_format, field_size))
 
-        # set the proxy's supplementary attributes
-        field_object = getattr(self, field)
-        field_object.setup(field_size, field_format)
+        if isinstance(field_value, list):
+            value_list = []
+
+            for item in field_value:
+                value_list.append(item[0])
+
+            setattr(class_obj, field.name, value_list)
+        else:
+            setattr(class_obj, field.name, field_value)
+
+    return metadata
+
+
+def _read_cstruct(cls, stream, offset: int = -1):
+    return _CStructLexer.parse_struct(cls, stream, offset)
+
+
+def _post_init(self):
+    dataclass_values = [i[0] for i in dataclasses.asdict(self).values()]
+
+    setattr(self.__class__, "meta", _collect_metadata(self))
+
+    # this probably isn't the most elegant way to do this
+    setattr(self.__class__, "__getitem__", lambda zelf, item: dataclass_values[item])
+    setattr(self.__class__, "__repr__", lambda zelf: repr(zelf.meta))
+    setattr(self.__class__, "__str__", lambda zelf: str(zelf.meta))
 
 
 def cstruct(data_format: str, byte_order: str = "little"):
@@ -156,121 +138,92 @@ def cstruct(data_format: str, byte_order: str = "little"):
 
 
 class _CStructLexer:
+    class _Token:
+        def __init__(self, repeat_count: int, format_ch: str, is_vararr: bool = False):
+            self.repeat_count = repeat_count
+            self.format_ch = format_ch
+            self.vararr = is_vararr
+
+            self.struct_format = f"{self.repeat_count}{self.format_ch}"
+
+        def is_leb128(self) -> bool:
+            if not _has_leb128():
+                raise InvalidFormat(
+                    "The LEB128 format is not supported. "
+                    "Please install the pyleb128 package to add support for it."
+                )
+
+            return self.format_ch in (
+                ULEB128_FORMAT_CH,
+                ULEB128P1_FORMAT_CH,
+                SLEB128_FORMAT_CH,
+            )
+
     def __init__(self, data_format: str, data_byte_order: str, stream):
         self.data_format = data_format
         self.byte_order = "<" if data_byte_order == "little" else ">"
         self.stream = stream
 
-        self.paren_open = False
-        self.digit_buffer = ""
-        self.format = ""
+        self.pos = 0
         self.values = []
 
         self.parse()
 
-    def _expand(self, count: int, format_ch: str):
-        expanded = ""
-        size = struct.calcsize(format_ch)
-
-        for _ in range(count):
-            self.values.append([
-                struct.unpack(self.byte_order + format_ch, self.stream.read(size))[0],
-                format_ch,
-                size
-            ])
-
-            expanded += format_ch
-
-        return expanded
-
-    def _read_byte_string(self, size: int):
-        self.values.append([self.stream.read(size), f"{size}s", size])
-        self.digit_buffer = ""
-
     def parse(self):
-        skip_flag = False
+        while self._has_tokens():
+            token = self._next_token()
 
-        for index, char in enumerate(self.data_format):
-            if skip_flag:
-                skip_flag = False
+            if token.vararr:
+                if token.repeat_count == 0:
+                    self.values.append([None, token.format_ch, 0])
 
-                continue
+                    continue
 
-            if char == "(":
-                self.paren_open = True
+                vararr_values = []
+                sum_size = 0
 
-                continue
-            elif char == ")":
-                if len(self.digit_buffer) == 0:
-                    raise InvalidFormat(
-                        "An index number was expected within the parentheses."
+                for _ in range(token.repeat_count):
+                    if token.is_leb128():
+                        leb_data = self._read_leb128(token)
+
+                        value = leb_data[0]
+                        item_size = leb_data[2]
+                    else:
+                        item_size = struct.calcsize(token.format_ch)
+                        value = struct.unpack(
+                            self.byte_order + token.format_ch,
+                            self.stream.read(item_size),
+                        )[0]
+
+                    sum_size += item_size
+
+                    vararr_values.append(
+                        [
+                            value,
+                            token.format_ch,
+                            item_size,
+                        ]
                     )
 
-                index_num = int(self.digit_buffer)
-
-                try:
-                    refd_value = self.values[index_num][0]
-                except IndexError:
-                    raise InvalidFormat("Index was out of range.")
-
-                if not isinstance(refd_value, int):
-                    raise InvalidFormat(
-                        f"The repeat count at {index_num} must be an integer!"
-                    )
-
-                if refd_value == 0:
-                    self.values.append(None)
-                    self.digit_buffer = ""
-
-                    skip_flag = True
-                    self.paren_open = False
-
-                    continue
-
-                format_ch = self.data_format[index + 1]
-
-                if format_ch == "s":
-                    self._read_byte_string(refd_value)
-
-                    skip_flag = True
-                    self.paren_open = False
-
-                    continue
-
-                self.format += self._expand(refd_value, format_ch)
-                self.digit_buffer = ""
-
-                skip_flag = True
-                self.paren_open = False
+                self.values.append([vararr_values, token.struct_format, sum_size])
 
                 continue
 
-            if char.isdigit():
-                self.digit_buffer += char
-
-                continue
-            elif self.digit_buffer != "":
-                format_ch = self.data_format[index]
-                number = int(self.digit_buffer)
-
-                if format_ch == "s":
-                    self._read_byte_string(number)
-
-                    continue
-
-                self.format += self._expand(number, format_ch)
-                self.digit_buffer = ""
+            if token.is_leb128():
+                self.values.append(self._read_leb128(token))
 
                 continue
 
-            self.values.append([
-                struct.unpack(
-                    self.byte_order + char, self.stream.read(struct.calcsize(char))
-                )[0],
-                char,
-                struct.calcsize(char)
-            ])
-            self.format += char
+            self.values.append(
+                [
+                    struct.unpack(
+                        self.byte_order + token.struct_format,
+                        self.stream.read(struct.calcsize(token.struct_format)),
+                    )[0],
+                    token.format_ch,
+                    struct.calcsize(token.struct_format),
+                ]
+            )
 
     @classmethod
     def parse_struct(cls, struct_class, stream, offset: int = -1):
@@ -289,3 +242,85 @@ class _CStructLexer:
             return struct_class(*values)
         except TypeError:
             raise InvalidFormat("The data format does not match the struct.")
+
+    def _next_literal(self) -> str:
+        literal = self.data_format[self.pos]
+        self.pos += 1
+
+        return literal
+
+    def _has_tokens(self) -> bool:
+        return self.pos < len(self.data_format)
+
+    def _next_token(self) -> _Token:
+        token = self._next_literal()
+
+        if token == "(":
+            if self.pos == 1:
+                raise InvalidFormat(
+                    "The data format must start with a struct format character. "
+                    "See https://docs.python.org/3/library/struct.html?highlight=struct#format-characters"
+                    " for more information."
+                )
+
+            digit_buffer = ""
+
+            while (token := self._next_literal()) != ")":
+                digit_buffer += token
+
+            vararr_format = self._next_literal()
+
+            data_index = int(digit_buffer)
+            data_value = self.values[data_index][0]
+
+            if vararr_format == "s":
+                # return as a non-variable array
+                return self._Token(data_value, vararr_format)
+
+            return self._Token(data_value, vararr_format, True)
+
+        if token.isdigit():
+            digit_buffer = token
+
+            while (token := self._next_literal()).isdigit():
+                digit_buffer += token
+
+            # the last read literal is the format character
+            return self._Token(int(digit_buffer), token)
+
+        return self._Token(1, token)
+
+    def _read_leb128(self, token: _Token) -> list[leb128, str, int]:
+        if token.format_ch == ULEB128_FORMAT_CH:
+            leb_size = uleb128.peek_size(self.stream)
+
+            if leb_size == 0:
+                return [uleb128(0), ULEB128_FORMAT_CH, 0]
+
+            return [uleb128.decode_stream(self.stream), token.format_ch, leb_size]
+        elif token.format_ch == ULEB128P1_FORMAT_CH:
+            leb_size = uleb128.peek_size(self.stream)
+
+            if leb_size == 0:
+                return [uleb128(0, p1=True), ULEB128P1_FORMAT_CH, 0]
+
+            return [
+                uleb128.decode_stream(self.stream, p1=True),
+                token.format_ch,
+                leb_size,
+            ]
+        elif token.format_ch == SLEB128_FORMAT_CH:
+            leb_size = sleb128.peek_size(self.stream)
+
+            if leb_size == 0:
+                return [sleb128(0), SLEB128_FORMAT_CH, 0]
+
+            return [sleb128.decode_stream(self.stream), token.format_ch, leb_size]
+
+
+class _callable_cstruct(sys.modules[__name__].__class__):
+    def __call__(self, *args, **kwargs):
+        return cstruct(*args, **kwargs)
+
+
+sys.modules[__name__].__class__ = _callable_cstruct
