@@ -1,5 +1,5 @@
 # cstruct
-Read primitive data from a binary stream using a C-like struct format.
+Read primitive data from a binary stream into a dataclass using a C-like struct format.
 
 ### Note
 LEB128 is supported by cstruct, but you must install my [pyleb128](https://github.com/yntha/pyleb128) package to enable support:
@@ -11,7 +11,7 @@ import cstruct
 class test:
     a: int
     b: int
-    c: list  # is pad byte
+    c: list
     d: list
 
 
