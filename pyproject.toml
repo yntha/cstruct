@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "cstruct-deco"
+name = "cstruct"
 version = "0.2.0"
-description = "Read primitive data from a binary stream using a C-like struct format."
+description = "Read primitive data from a binary stream into a dataclass using a C-like struct format."
 authors = ["yntha <bguznvjk@gmail.com>"]
 license = "GPL-3.0-or-later"
 readme = "README.md"
-homepage = "https://github.com/yntha/pyleb128"
+homepage = "https://github.com/yntha/cstruct"
 
 [tool.poetry.dependencies]
 python = "^3.11"
