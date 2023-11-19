@@ -24,6 +24,12 @@ print(y.__dict__)
 # output:
 # {'a': 2, 'b': 0, 'c': [b'\x01', b'\x00'], 'd': [65535, 65534]}
 ```
+To use leb128 in a cstruct class, add one of the following keys to the format string:
+* `U` - unsigned leb128
+* `S` - signed leb128
+* `V` - unsigned leb128 + 1
+
+You must also specify the field type as either `leb128`(generic), `uleb128`(unsigned), or `sleb128`(signed), unless you use a container type of course.
 
 ### Installing
 ```
