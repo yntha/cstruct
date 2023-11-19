@@ -78,7 +78,7 @@ print(parsed.__dict__)
 # you can see the size and the string format of the fields, too:
 print(parsed.meta.c.size)  # 8
 print(parsed.meta.["c"].format)  # 's'
-print(parsed.meta[0])  # 'I (4 bytes)'
+print(parsed.meta[1])  # 'I (4 bytes)'
 
 # cstruct classes are also sequences:
 print(parsed[0])  # b'(F\x1c\xe8'
