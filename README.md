@@ -71,7 +71,7 @@ class x:
     h: test_enum  # you can use enums, too. the value will be the enum member
 
 
-# you can inherit from cstruct classes, too:
+# you can extend cstruct classes through inheritance:
 @cstruct("B")
 class y(x):
     i: int
