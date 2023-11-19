@@ -19,6 +19,7 @@ import struct
 import sys
 import dataclasses
 import enum
+import typing
 
 from dataclasses import dataclass
 
@@ -114,7 +115,7 @@ def _read_cstruct(cls, stream, offset: int = -1):
 def _post_init(self):
     dataclass_values = [i[0] for i in dataclasses.asdict(self).values()]
 
-    setattr(self.__class__, "meta", _collect_metadata(self))
+    setattr(self, "meta", _collect_metadata(self))
 
     # this probably isn't the most elegant way to do this
     setattr(self.__class__, "__getitem__", lambda zelf, item: dataclass_values[item])
