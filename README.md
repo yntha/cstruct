@@ -39,6 +39,13 @@ You must also specify the field type as either `leb128`(generic), `uleb128`(unsi
 ### Example Usage
 ```python
 import cstruct
+import enum
+
+
+class test_enum(enum.IntEnum):
+    a = 1
+    b = 2
+    c = 3
 
 
 # 4s   - next 4 bytes as a byte string
@@ -51,7 +58,7 @@ import cstruct
 # I    - next unsigned int
 # i    - next signed int
 # i    - next signed int
-@cstruct("4sI(1)b(1)sIIii", "little")
+@cstruct("4sI(1)b(1)sIIiiH", "little")
 class x:
     a: bytes
     b: int
@@ -61,21 +68,32 @@ class x:
     e: int
     f: int
     g: int
+    h: test_enum  # you can use enums, too. the value will be the enum member
+
+
+# you can inherit from cstruct classes, too:
+@cstruct("B")
+class y(x):
+    i: int
 
 
 import io
 
 s = io.BytesIO(
     bytes.fromhex(
-        "28 46 1c e8    08 00 00 00   c2 cc ee ff aa bb cc 11   9f7e683cdd20189e  c1 54 92 4a 44 ab 25 be 05 46 eb ff 2c d8 c4 c5"
+        "28 46 1c e8    08 00 00 00   c2 cc ee ff aa bb cc 11   9f7e683cdd20189e  c1 54 92 4a 44 ab 25 be 05 46 eb ff 2c d8 c4 c5  0100  01"
     )
 )
 parsed = x.read(s)
+parsed2 = y.read(s)
 print(parsed.__dict__)
 # output:
-# {'a': b'(F\x1c\xe8', 'b': 8, 'z': [-62, -52, -18, -1, -86, -69, -52, 17], 'c': b'\x9f~h<\xdd \x18\x9e', 'd': 1251103937, 'e': 3190139716, 'f': -1358331, 'g': -976955348}
+# {'a': b'(F\x1c\xe8', 'b': 8, 'z': [-62, -52, -18, -1, -86, -69, -52, 17], 'c': b'\x9f~h<\xdd \x18\x9e', 'd': 1251103937, 'e': 3190139716, 'f': -1358331, 'g': -976955348, 'h': <test_enum.a: 1>}
+print(parsed2.__dict__)
+# output:
+# {'a': b'(F\x1c\xe8', 'b': 8, 'z': [-62, -52, -18, -1, -86, -69, -52, 17], 'c': b'\x9f~h<\xdd \x18\x9e', 'd': 1251103937, 'e': 3190139716, 'f': -1358331, 'g': -976955348, 'h': <test_enum.a: 1>, 'i': 1}
 
-# you can see the size and the string format of the fields, too:
+# you can also see the size and the string format of the fields:
 print(parsed.meta.c.size)  # 8
 print(parsed.meta.["c"].format)  # 's'
 print(parsed.meta[1])  # 'I (4 bytes)'
