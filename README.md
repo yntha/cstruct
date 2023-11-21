@@ -16,7 +16,7 @@ class test:
 
 
 x = io.BytesIO(bytes.fromhex("02000000 00000000 01 00 ffff03 feff03"))
-y = test.read(x)
+y = test(x)
 
 print(y.d[0].encoded)  # b'\xff\xff\x03'
 print(y.d[0].size)  # 3
@@ -84,8 +84,8 @@ s = io.BytesIO(
         "28 46 1c e8    08 00 00 00   c2 cc ee ff aa bb cc 11   9f7e683cdd20189e  c1 54 92 4a 44 ab 25 be 05 46 eb ff 2c d8 c4 c5  0100  01"
     )
 )
-parsed = x.read(s)
-parsed2 = y.read(s)
+parsed = x(s)
+parsed2 = y(s)
 print(parsed.__dict__)
 # output:
 # {'a': b'(F\x1c\xe8', 'b': 8, 'z': [-62, -52, -18, -1, -86, -69, -52, 17], 'c': b'\x9f~h<\xdd \x18\x9e', 'd': 1251103937, 'e': 3190139716, 'f': -1358331, 'g': -976955348, 'h': <test_enum.a: 1>}
