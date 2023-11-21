@@ -142,20 +142,6 @@ def cstruct(data_format: str, byte_order: str = "little"):
             primitive_format = struct_format
             data_byte_order = byte_order
 
-            def __post_init__(self):
-                dataclass_values = [i[0] for i in dataclasses.asdict(self).values()]
-
-                setattr(self, "meta", _collect_metadata(self))
-
-                # this probably isn't the most elegant way to do this
-                setattr(
-                    self.__class__,
-                    "__getitem__",
-                    lambda zelf, item: dataclass_values[item],
-                )
-                setattr(self.__class__, "__repr__", lambda zelf: repr(self.meta))
-                setattr(self.__class__, "__str__", lambda zelf: str(self.meta))
-
             def __new__(_cls, stream, offset: int = -1):
                 self = super().__new__(_cls)
 
@@ -164,6 +150,24 @@ def cstruct(data_format: str, byte_order: str = "little"):
                 )
 
                 return self
+
+            def __getitem__(self, item):
+                dataclass_values = [i[0] for i in dataclasses.asdict(self).values()]
+
+                return dataclass_values[item]
+
+            def __repr__(self):
+                return repr(self.meta)
+
+            def __str__(self):
+                return str(self.meta)
+
+            def __post_init__(self):
+                self.meta = _collect_metadata(self)
+
+            @property
+            def length(self):
+                return sum([member.size for member in self.meta])
 
         newclass = dataclass(newclass)
         newclass_init = newclass.__init__

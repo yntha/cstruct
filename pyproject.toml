@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "cstruct"
-version = "0.2.2"
+version = "0.2.4"
 description = "Read primitive data from a binary stream into a dataclass using a C-like struct format."
 authors = ["yntha <bguznvjk@gmail.com>"]
 license = "GPL-3.0-or-later"
