@@ -19,6 +19,7 @@ import struct
 import sys
 import dataclasses
 import enum
+import io
 import typing
 
 from dataclasses import dataclass
@@ -112,17 +113,6 @@ def _read_cstruct(cls, stream, offset: int = -1):
     return _CStructLexer.parse_struct(cls, stream, offset)
 
 
-def _post_init(self):
-    dataclass_values = [i[0] for i in dataclasses.asdict(self).values()]
-
-    setattr(self, "meta", _collect_metadata(self))
-
-    # this probably isn't the most elegant way to do this
-    setattr(self.__class__, "__getitem__", lambda zelf, item: dataclass_values[item])
-    setattr(self.__class__, "__repr__", lambda zelf: repr(zelf.meta))
-    setattr(self.__class__, "__str__", lambda zelf: str(zelf.meta))
-
-
 def cstruct(data_format: str, byte_order: str = "little"):
     def decorate(cls):
         struct_format = data_format
@@ -131,12 +121,62 @@ def cstruct(data_format: str, byte_order: str = "little"):
         if base_class is not object and hasattr(base_class, "primitive_format"):
             struct_format = base_class.primitive_format + data_format
 
-        setattr(cls, "primitive_format", struct_format)
-        setattr(cls, "data_byte_order", byte_order)
-        setattr(cls, "read", classmethod(_read_cstruct))
-        setattr(cls, "__post_init__", _post_init)
+        old_class = cls
+        newclass_bases = []
 
-        return dataclass(cls)
+        for base in old_class.__bases__:
+            if hasattr(base, "source_class"):
+                newclass_bases.append(base.source_class)
+            else:
+                newclass_bases.append(base)
+
+        cls_dict = dict(cls.__dict__)
+        cls_dict.pop("__dict__", None)
+
+        old_class = type(cls.__name__, tuple(newclass_bases), cls_dict)
+        setattr(old_class, "__annotations__", cls.__annotations__)
+        old_class = dataclass(old_class)
+
+        class newclass(old_class):
+            source_class = old_class
+            primitive_format = struct_format
+            data_byte_order = byte_order
+
+            def __post_init__(self):
+                dataclass_values = [i[0] for i in dataclasses.asdict(self).values()]
+
+                setattr(self, "meta", _collect_metadata(self))
+
+                # this probably isn't the most elegant way to do this
+                setattr(
+                    self.__class__,
+                    "__getitem__",
+                    lambda zelf, item: dataclass_values[item],
+                )
+                setattr(self.__class__, "__repr__", lambda zelf: repr(self.meta))
+                setattr(self.__class__, "__str__", lambda zelf: str(self.meta))
+
+            def __new__(_cls, stream, offset: int = -1):
+                self = super().__new__(_cls)
+
+                _cls.__init__(
+                    self, None, **(_read_cstruct(_cls, stream, offset=offset))
+                )
+
+                return self
+
+        newclass = dataclass(newclass)
+        newclass_init = newclass.__init__
+
+        def _init(self, stream, *args, **kwargs):
+            if stream is not None:
+                return
+
+            newclass_init(self, *args, **kwargs)
+
+        newclass.__init__ = _init
+
+        return newclass
 
     return decorate
 
@@ -243,7 +283,9 @@ class _CStructLexer:
         stream.seek(stream_pos, 0)  # SEEK_SET
 
         try:
-            return struct_class(*values)
+            dataclass_fields = [f.name for f in dataclasses.fields(struct_class)]
+
+            return dict(zip(dataclass_fields, values))
         except TypeError:
             raise InvalidFormat("The data format does not match the struct.")
 
