@@ -117,6 +117,8 @@ def cstruct(data_format: str, byte_order: str = "little"):
     def decorate(cls):
         struct_format = data_format
         base_class = cls.__base__
+        cls_dict = dict(cls.__dict__)
+        cls_dict.pop("__dict__", None)
 
         if base_class is not object and hasattr(base_class, "primitive_format"):
             struct_format = base_class.primitive_format + data_format
@@ -130,12 +132,13 @@ def cstruct(data_format: str, byte_order: str = "little"):
             else:
                 newclass_bases.append(base)
 
-        cls_dict = dict(cls.__dict__)
-        cls_dict.pop("__dict__", None)
-
         old_class = type(cls.__name__, tuple(newclass_bases), cls_dict)
         setattr(old_class, "__annotations__", cls.__annotations__)
         old_class = dataclass(old_class)
+
+        # also remove the inherited `on_read` callback
+        if base_class is not object and hasattr(old_class, "on_read"):
+            old_class.on_read = None
 
         class newclass(old_class):
             source_class = old_class
@@ -164,6 +167,11 @@ def cstruct(data_format: str, byte_order: str = "little"):
 
             def __post_init__(self):
                 self.meta = _collect_metadata(self)
+
+                on_read_cb = getattr(self, "on_read", None)
+
+                if on_read_cb is not None:
+                    on_read_cb()
 
             @property
             def length(self):
