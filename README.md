@@ -69,6 +69,10 @@ class x:
     f: int
     g: int
     h: test_enum  # you can use enums, too. the value will be the enum member
+    
+    # post processing can be done by defining an `on_read` function.
+    def on_read(self):
+        assert self.b == 0x00000008
 
 
 # you can extend cstruct classes through inheritance:
