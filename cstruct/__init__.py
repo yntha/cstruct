@@ -19,8 +19,6 @@ import struct
 import sys
 import dataclasses
 import enum
-import io
-import typing
 
 from dataclasses import dataclass
 
@@ -29,6 +27,7 @@ from dataclasses import dataclass
 try:
     import pyleb128
 
+    # noinspection PyUnresolvedReferences
     from pyleb128 import uleb128, sleb128, leb128
 except ImportError:
     pass
@@ -113,82 +112,97 @@ def _read_cstruct(cls, stream, offset: int = -1):
     return _CStructLexer.parse_struct(cls, stream, offset)
 
 
+def _wrap_class(cls: type, struct_format: str, byte_order: str) -> type:
+    superclass_bases = []
+
+    for base in cls.__bases__:
+        if hasattr(base, "_source_class"):
+            # noinspection PyProtectedMember
+            superclass_bases.append(base._source_class)
+        else:
+            superclass_bases.append(base)
+
+    # we must remove the old dict because it is improperly copied to
+    # the new class with `type`. See
+    # https://jira.mongodb.org/browse/MOTOR-460 for more information.
+    cls_dict = dict(cls.__dict__)
+    cls_dict.pop("__dict__", None)
+
+    superclass = type(cls.__name__, tuple(superclass_bases), cls_dict)
+
+    # copy over the old class annotations
+    setattr(superclass, "__annotations__", cls.__annotations__)
+    # noinspection PyTypeChecker
+    superclass = dataclass(superclass)
+
+    # we must also remove the inherited `on_read` callback.
+    if cls.__base__ is not object and hasattr(superclass, "on_read"):
+        superclass.on_read = None
+
+    # we must create a new class body because a custom `__new__`
+    # function cannot use `super()` if it is not inside a class
+    # body.
+    @dataclass
+    class newclass(superclass):
+        _source_class = superclass
+        primitive_format = struct_format
+        data_byte_order = byte_order
+
+        # noinspection PyMethodParameters
+        def __new__(_cls, stream, offset: int = -1):
+            self = super().__new__(_cls)
+
+            _cls.__init__(self, None, **(_read_cstruct(_cls, stream, offset=offset)))
+
+            return self
+
+        def __getitem__(self, item):
+            dataclass_values = [i[0] for i in dataclasses.asdict(self).values()]
+
+            return dataclass_values[item]
+
+        def __repr__(self):
+            return repr(self.meta)
+
+        def __str__(self):
+            return str(self.meta)
+
+        def __post_init__(self):
+            self.meta = _collect_metadata(self)
+
+            on_read_cb = getattr(self, "on_read", None)
+
+            if on_read_cb is not None:
+                on_read_cb()
+
+        @property
+        def length(self):
+            return sum([member.size for member in self.meta])
+
+    # back up the dataclass init function for processing below
+    newclass_init = newclass.__init__
+
+    # avoid parameter errors by redefining the `__init__` function
+    def _init(self, stream, *args, **kwargs):
+        if stream is not None:
+            return
+
+        newclass_init(self, *args, **kwargs)
+
+    newclass.__init__ = _init
+
+    return newclass
+
+
 def cstruct(data_format: str, byte_order: str = "little"):
     def decorate(cls):
         struct_format = data_format
         base_class = cls.__base__
-        cls_dict = dict(cls.__dict__)
-        cls_dict.pop("__dict__", None)
 
         if base_class is not object and hasattr(base_class, "primitive_format"):
             struct_format = base_class.primitive_format + data_format
 
-        old_class = cls
-        newclass_bases = []
-
-        for base in old_class.__bases__:
-            if hasattr(base, "source_class"):
-                newclass_bases.append(base.source_class)
-            else:
-                newclass_bases.append(base)
-
-        old_class = type(cls.__name__, tuple(newclass_bases), cls_dict)
-        setattr(old_class, "__annotations__", cls.__annotations__)
-        old_class = dataclass(old_class)
-
-        # also remove the inherited `on_read` callback
-        if base_class is not object and hasattr(old_class, "on_read"):
-            old_class.on_read = None
-
-        class newclass(old_class):
-            source_class = old_class
-            primitive_format = struct_format
-            data_byte_order = byte_order
-
-            def __new__(_cls, stream, offset: int = -1):
-                self = super().__new__(_cls)
-
-                _cls.__init__(
-                    self, None, **(_read_cstruct(_cls, stream, offset=offset))
-                )
-
-                return self
-
-            def __getitem__(self, item):
-                dataclass_values = [i[0] for i in dataclasses.asdict(self).values()]
-
-                return dataclass_values[item]
-
-            def __repr__(self):
-                return repr(self.meta)
-
-            def __str__(self):
-                return str(self.meta)
-
-            def __post_init__(self):
-                self.meta = _collect_metadata(self)
-
-                on_read_cb = getattr(self, "on_read", None)
-
-                if on_read_cb is not None:
-                    on_read_cb()
-
-            @property
-            def length(self):
-                return sum([member.size for member in self.meta])
-
-        newclass = dataclass(newclass)
-        newclass_init = newclass.__init__
-
-        def _init(self, stream, *args, **kwargs):
-            if stream is not None:
-                return
-
-            newclass_init(self, *args, **kwargs)
-
-        newclass.__init__ = _init
-
-        return newclass
+        return _wrap_class(cls, struct_format, byte_order)
 
     return decorate
 
