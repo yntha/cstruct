@@ -19,6 +19,7 @@ import struct
 import sys
 import dataclasses
 import enum
+import typing
 
 from dataclasses import dataclass
 
@@ -167,7 +168,7 @@ def _wrap_class(cls: type, struct_format: str, byte_order: str) -> type:
         def __str__(self):
             return str(self.meta)
 
-        def __post_init__(self):
+        def __post_init__(self, *args, **kwargs):
             self.meta = _collect_metadata(self)
 
             on_read_cb = getattr(self, "on_read", None)
@@ -182,10 +183,24 @@ def _wrap_class(cls: type, struct_format: str, byte_order: str) -> type:
     # back up the dataclass init function for processing below
     newclass_init = newclass.__init__
 
+    # collect all dataclasses.InitVar fields
+    initvars = []
+
+    for field in newclass.__dataclass_fields__.values():
+        if field.default is not dataclasses.MISSING:
+            continue
+
+        if isinstance(field.type, dataclasses.InitVar):
+            initvars.append(field.name)
+
     # avoid parameter errors by redefining the `__init__` function
     def _init(self, stream, *args, **kwargs):
         if stream is not None:
             return
+
+        # add all InitVar fields to the kwargs
+        for initvar in initvars:
+            kwargs[initvar] = None
 
         newclass_init(self, *args, **kwargs)
 
