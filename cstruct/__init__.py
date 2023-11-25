@@ -174,7 +174,7 @@ def _wrap_class(cls: type, struct_format: str, byte_order: str) -> type:
             on_read_cb = getattr(self, "on_read", None)
 
             if on_read_cb is not None:
-                on_read_cb()
+                on_read_cb(*args)
 
         @property
         def length(self):
