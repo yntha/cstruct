@@ -40,6 +40,7 @@ You must also specify the field type as either `leb128`(generic), `uleb128`(unsi
 ```python
 import cstruct
 import enum
+import dataclasses
 
 
 class test_enum(enum.IntEnum):
@@ -69,10 +70,12 @@ class x:
     f: int
     g: int
     h: test_enum  # you can use enums, too. the value will be the enum member
+    z: dataclasses.InitVar[int]
     
     # post processing can be done by defining an `on_read` function.
-    def on_read(self):
+    def on_read(self, z: int):
         assert self.b == 0x00000008
+        print("z is", z)
 
 
 # you can extend cstruct classes through inheritance:
