@@ -72,9 +72,14 @@ def _gen_superclass(cls: type) -> type:
     return superclass
 
 
+class ClassWrapperMeta(type):
+    def __repr__(cls):
+        return f"<class 'cstruct.classwrapper.{cls._source_class.__name__}'>"
+
+
 def _make_newclass(src_cls: type, struct_format: str, byte_order: str) -> type:
     @dataclass
-    class newclass(_gen_superclass(src_cls)):
+    class newclass(_gen_superclass(src_cls), metaclass=ClassWrapperMeta):
         _source_class = src_cls
         primitive_format = struct_format
         data_byte_order = byte_order
