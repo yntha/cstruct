@@ -14,6 +14,7 @@
 #  this program. If not, see <http://www.gnu.org/licenses/>.                           -
 # --------------------------------------------------------------------------------------
 import dataclasses
+import typing
 
 from dataclasses import dataclass
 from ._metadata import collect_metadata
@@ -26,15 +27,34 @@ class ClassWrapper:
         return _make_newclass(struct_class, struct_format, byte_order)
 
 
+# noinspection PyProtectedMember
 def _gen_superclass(cls: type) -> type:
     superclass_bases = []
+    annotations = {}
 
     for base in cls.__bases__:
         if hasattr(base, "_source_class"):
-            # noinspection PyProtectedMember
             superclass_bases.append(base._source_class)
+            annotations.update(base._source_class.__annotations__)
         else:
             superclass_bases.append(base)
+
+            if hasattr(base, "__annotations__"):
+                annotations.update(base.__annotations__)
+
+    annotations.update(cls.__annotations__)
+
+    # remove all initvars and classvars from the annotations, if this
+    # class is a subclass.
+    if cls.__base__ is not object:
+        for annotation in annotations.copy():
+            if isinstance(annotations[annotation], dataclasses.InitVar):
+                annotations.pop(annotation)
+
+                continue
+
+            if annotations[annotation] is typing.ClassVar:
+                annotations.pop(annotation)
 
     # we must remove the old dict because it is improperly copied to
     # the new class with `type`. See
@@ -45,11 +65,9 @@ def _gen_superclass(cls: type) -> type:
     superclass = type(cls.__name__, tuple(superclass_bases), cls_dict)
 
     # copy over the old class annotations
-    setattr(superclass, "__annotations__", cls.__annotations__)
+    setattr(superclass, "__annotations__", annotations)
     # noinspection PyTypeChecker
     superclass = dataclass(superclass)
-
-    print(superclass.__dataclass_fields__)
 
     return superclass
 
