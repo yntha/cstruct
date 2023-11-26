@@ -13,27 +13,7 @@
 #  You should have received a copy of the GNU General Public License along with        -
 #  this program. If not, see <http://www.gnu.org/licenses/>.                           -
 # --------------------------------------------------------------------------------------
-import sys
-
-from ._classwrap import ClassWrapper
 
 
-def cstruct(data_format: str, byte_order: str = "little"):
-    def decorate(cls):
-        struct_format = data_format
-        base_class = cls.__base__
-
-        if base_class is not object and hasattr(base_class, "primitive_format"):
-            struct_format = base_class.primitive_format + data_format
-
-        return ClassWrapper.wrap(cls, struct_format, byte_order)
-
-    return decorate
-
-
-class _callable_cstruct(sys.modules[__name__].__class__):
-    def __call__(self, *args, **kwargs):
-        return cstruct(*args, **kwargs)
-
-
-sys.modules[__name__].__class__ = _callable_cstruct
+class InvalidFormat(Exception):
+    pass
