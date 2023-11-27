@@ -77,6 +77,11 @@ def collect_metadata(class_obj: dataclass) -> StructMetadata:
             value_list = []
 
             for item in field_value:
+                if issubclass(field.type, enum.Enum):
+                    value_list.append(field.type(item[0]))
+
+                    continue
+
                 value_list.append(item[0])
 
             setattr(class_obj, field.name, value_list)
