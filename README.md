@@ -114,3 +114,5 @@ For all the standard struct format characters, see https://docs.python.org/3/lib
 ### To-Do List
 * Make cstruct classes immutable
 * Eventually make them mutable with the introduction of the cstruct serializer(python dataclass -> binary data)
+* Add support for bit fields
+* Rewrite this readme to include clear examples and real world scenarios.

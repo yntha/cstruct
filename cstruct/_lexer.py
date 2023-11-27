@@ -34,6 +34,8 @@ ULEB128_FORMAT_CH = "U"
 ULEB128P1_FORMAT_CH = chr(ord(ULEB128_FORMAT_CH) + 1)
 SLEB128_FORMAT_CH = "S"
 
+TYPEDEF_FORMAT_CH = "T"
+
 
 class CStructLexer:
     class _Token:
@@ -57,10 +59,16 @@ class CStructLexer:
                 SLEB128_FORMAT_CH,
             )
 
-    def __init__(self, data_format: str, data_byte_order: str, stream):
+        def is_typedef(self) -> bool:
+            return self.format_ch == TYPEDEF_FORMAT_CH
+
+    def __init__(
+        self, struct_class: type, data_format: str, data_byte_order: str, stream
+    ):
         self.data_format = data_format
         self.byte_order = "<" if data_byte_order == "little" else ">"
         self.stream = stream
+        self.struct_class = struct_class
 
         self.pos = 0
         self.values = []
@@ -81,15 +89,27 @@ class CStructLexer:
                 sum_size = 0
 
                 for _ in range(token.repeat_count):
+                    format_ch = token.format_ch
+
                     if token.is_leb128():
                         leb_data = self._read_leb128(token)
 
                         value = leb_data[0]
                         item_size = leb_data[2]
+                        format_ch = leb_data[1]
+                    elif token.is_typedef() and self.check_typedef():
+                        typedef = self.get_typdef_type()
+                        typedef_initialized = typedef(self.stream)
+
+                        value = typedef_initialized
+
+                        # noinspection PyUnresolvedReferences
+                        format_ch = typedef.primitive_format
+                        item_size = typedef_initialized.length
                     else:
-                        item_size = struct.calcsize(token.format_ch)
+                        item_size = struct.calcsize(format_ch)
                         value = struct.unpack(
-                            self.byte_order + token.format_ch,
+                            self.byte_order + format_ch,
                             self.stream.read(item_size),
                         )[0]
 
@@ -98,12 +118,30 @@ class CStructLexer:
                     vararr_values.append(
                         [
                             value,
-                            token.format_ch,
+                            format_ch,
                             item_size,
                         ]
                     )
 
                 self.values.append([vararr_values, token.struct_format, sum_size])
+
+                continue
+
+            if token.is_typedef():
+                if not self.check_typedef():
+                    raise InvalidFormat("Invalid type specified for the typedef.")
+
+                typedef = self.get_typdef_type()
+                typedef_initialized = typedef(self.stream)
+
+                # noinspection PyUnresolvedReferences
+                self.values.append(
+                    [
+                        typedef_initialized,
+                        typedef.primitive_format,
+                        typedef_initialized.length,
+                    ]
+                )
 
                 continue
 
@@ -123,6 +161,15 @@ class CStructLexer:
                 ]
             )
 
+    def check_typedef(self):
+        typedef_type = self.get_typdef_type()
+
+        return repr(typedef_type).startswith("<class 'cstruct.classwrapper.")
+
+    # noinspection PyDataclass
+    def get_typdef_type(self) -> type:
+        return dataclasses.fields(self.struct_class)[self.pos - 1].type
+
     @classmethod
     def parse_struct(cls, struct_class, stream, offset: int = -1):
         stream_pos = stream.tell()
@@ -131,7 +178,10 @@ class CStructLexer:
             stream.seek(offset, 0)  # SEEK_SET
 
         values = cls(
-            struct_class.primitive_format, struct_class.data_byte_order, stream
+            struct_class,
+            struct_class.primitive_format,
+            struct_class.data_byte_order,
+            stream,
         ).values
 
         stream.seek(stream_pos, 0)  # SEEK_SET

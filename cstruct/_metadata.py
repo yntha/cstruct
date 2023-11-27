@@ -49,6 +49,7 @@ class StructMetadata:
         return "\n".join([f"{key}: {value}" for key, value in self.__dict__.items()])
 
 
+# noinspection PyUnresolvedReferences
 def collect_metadata(class_obj: dataclass) -> StructMetadata:
     metadata = StructMetadata()
 
@@ -64,6 +65,11 @@ def collect_metadata(class_obj: dataclass) -> StructMetadata:
         field_value = field_object[0]
         field_format = field_object[1]
         field_size = field_object[2]
+
+        if repr(field.type).startswith("<class 'cstruct.classwrapper."):
+            # noinspection PyProtectedMember
+            orig_name = field.type._source_class.__name__
+            field_format = f"T[{orig_name}({field.type.primitive_format})]"
 
         metadata.add_item(field.name, MetadataItem(field_format, field_size))
 
