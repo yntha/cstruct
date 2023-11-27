@@ -95,7 +95,7 @@ def _make_newclass(src_cls: type, struct_format: str, byte_order: str) -> type:
             return self
 
         def __getitem__(self, item):
-            dataclass_values = [i[0] for i in dataclasses.asdict(self).values()]
+            dataclass_values = [i for i in dataclasses.asdict(self).values()]
 
             return dataclass_values[item]
 
