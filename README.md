@@ -63,9 +63,9 @@ print(parsed[0])  # 1
 print(parsed[1])  # 2
 print(parsed[2])  # 3
 
-print(parsed.meta[0])  # 'I (4 bytes)'
-print(parsed.meta[1])  # 'I (4 bytes)'
-print(parsed.meta[2])  # 'b (1 byte)'
+print(parsed.meta[0])  # 'I (4 bytes) = 1'
+print(parsed.meta[1])  # 'I (4 bytes) = 2'
+print(parsed.meta[2])  # 'b (1 bytes) = 3'
 
 print(parsed.meta.a.size)  # 4
 print(parsed.meta.b.format)  # 'I'
@@ -208,3 +208,4 @@ See [elf_header.py](examples/elf_header.py).
 * Eventually make them mutable with the introduction of the cstruct serializer(python dataclass -> binary data)
 * Add support for bit fields 
 * ~~Rewrite this readme to include clear examples and real world scenarios.~~
+* Allow for vararr fields to be specified as `name: list[<type>]` instead of just `name: <type>`.
