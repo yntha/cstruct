@@ -38,6 +38,9 @@ class MetadataItem:
                 map(lambda s: len(s) - 1, value_str.split("\n"))
             )
 
+        if isinstance(self.orig_value, enum.Enum):
+            value_str = repr(self.orig_value)
+
         return f"{self.format} ({self.size} bytes) = {value_str}"
 
 
