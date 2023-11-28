@@ -13,12 +13,13 @@
 #  You should have received a copy of the GNU General Public License along with        -
 #  this program. If not, see <http://www.gnu.org/licenses/>.                           -
 # --------------------------------------------------------------------------------------
+import dataclasses
 
 import cstruct
 import enum
 
 
-class ELF_CLASS(enum.IntEnum):
+class ELFClass(enum.IntEnum):
     ELFCLASSNONE = 0
     ELFCLASS32 = 1
     ELFCLASS64 = 2
@@ -28,7 +29,7 @@ class ELF_CLASS(enum.IntEnum):
         return cls.ELFCLASSNONE
 
 
-class ELF_DATA(enum.IntEnum):
+class ELFData(enum.IntEnum):
     ELFDATANONE = 0
     ELFDATA2LSB = 1
     ELFDATA2MSB = 2
@@ -38,7 +39,7 @@ class ELF_DATA(enum.IntEnum):
         return cls.ELFDATANONE
 
 
-class ELF_OSABI(enum.IntEnum):
+class ELFOsAbi(enum.IntEnum):
     ELFOSABI_NONE = 0
     ELFOSABI_SYSV = 0
     ELFOSABI_HPUX = 1
@@ -60,7 +61,7 @@ class ELF_OSABI(enum.IntEnum):
         return cls.ELFOSABI_NONE
 
 
-class ELF_TYPE(enum.IntEnum):
+class ELFType(enum.IntEnum):
     ET_NONE = 0
     ET_REL = 1
     ET_EXEC = 2
@@ -76,7 +77,7 @@ class ELF_TYPE(enum.IntEnum):
         return cls.ET_NONE
 
 
-class ELF_MACHINE(enum.IntEnum):
+class ELFMachine(enum.IntEnum):
     EM_NONE = 0
     EM_M32 = 1
     EM_SPARC = 2
@@ -165,7 +166,7 @@ class ELF_MACHINE(enum.IntEnum):
         return cls.EM_NONE
 
 
-class ELF_VERSION(enum.IntEnum):
+class ELFVersion(enum.IntEnum):
     EV_NONE = 0
     EV_CURRENT = 1
 
@@ -175,21 +176,20 @@ class ELF_VERSION(enum.IntEnum):
 
 
 @cstruct("4s5B7x")
-class ELF_IDENT:
+class ELFIdent:
     magic: bytes
-    class_: ELF_CLASS
-    data: ELF_DATA
-    version: ELF_VERSION
-    osabi: ELF_OSABI
+    class_: ELFClass
+    data: ELFData
+    version: ELFVersion
+    osabi: ELFOsAbi
     abiversion: int
 
 
-@cstruct("THHI3QI6H")
-class ELFHeader:
-    ident: ELF_IDENT
-    type: ELF_TYPE
-    machine: ELF_MACHINE
-    version: ELF_VERSION
+@cstruct("HHI3II6H")
+class ELF32Header:
+    type: ELFType
+    machine: ELFMachine
+    version: ELFVersion
     entry: int
     phoff: int
     shoff: int
@@ -201,12 +201,60 @@ class ELFHeader:
     shnum: int
     shstrndx: int
 
-    def on_read(self):
-        assert self.ident.magic == b"\x7fELF"
-        assert self.ident.version == ELF_VERSION.EV_CURRENT
+    def on_read(self, stream):
+        if self.machine is ELFMachine.EM_NONE:
+            print("Unknown machine type code!")
+        else:
+            print(f"Machine type: {self.machine.name}")
+
+        print(f"Entry point: 0x{self.entry:08X}")
 
 
-with open("test.elf", "rb") as f:
-    elf_header = ELFHeader(f)
+@cstruct("HHI3QI6H")
+class ELF64Header:
+    type: ELFType
+    machine: ELFMachine
+    version: ELFVersion
+    entry: int
+    phoff: int
+    shoff: int
+    flags: int
+    ehsize: int
+    phentsize: int
+    phnum: int
+    shentsize: int
+    shnum: int
+    shstrndx: int
 
-    print(elf_header)
+    def on_read(self, stream):
+        if self.machine is ELFMachine.EM_NONE:
+            print("Unknown machine type code!")
+        else:
+            print(f"Machine type: {self.machine.name}")
+
+        print(f"Entry point: 0x{self.entry:08X}")
+
+
+def dump_elf_header(stream):
+    elf_ident = ELFIdent(stream)
+
+    if elf_ident.class_ is ELFClass.ELFCLASS32:
+        elf_header = ELF32Header(stream)
+    elif elf_ident.class_ is ELFClass.ELFCLASS64:
+        elf_header = ELF64Header(stream)
+    else:
+        raise ValueError("Unknown ELF class!")
+
+    print()
+    print(f"ELF Identity:\n{elf_ident}\n")
+    print(f"ELF Header:\n{elf_header}")
+    print()
+
+
+print("Dumping 32-bit ELF header:")
+with open("test32.elf", "rb") as f:
+    dump_elf_header(f)
+
+print("Dumping 64-bit ELF header:")
+with open("test64.elf", "rb") as f:
+    dump_elf_header(f)
