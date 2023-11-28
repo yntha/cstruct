@@ -150,6 +150,41 @@ class CStructLexer:
 
                 continue
 
+            if token.repeat_count > 1:
+                if token.format_ch == "s":
+                    self.values.append(
+                        [
+                            self.stream.read(token.repeat_count),
+                            token.format_ch,
+                            token.repeat_count,
+                        ]
+                    )
+
+                    continue
+                for _ in range(token.repeat_count):
+                    if token.format_ch == "x":
+                        self.stream.read(1)
+
+                        continue
+
+                    self.values.append(
+                        [
+                            struct.unpack(
+                                self.byte_order + token.format_ch,
+                                self.stream.read(struct.calcsize(token.format_ch)),
+                            )[0],
+                            token.format_ch,
+                            struct.calcsize(token.format_ch),
+                        ]
+                    )
+
+                continue
+
+            if token.format_ch == "x":
+                self.stream.read(1)
+
+                continue
+
             self.values.append(
                 [
                     struct.unpack(
@@ -172,8 +207,6 @@ class CStructLexer:
 
     @classmethod
     def parse_struct(cls, struct_class, stream, offset: int = -1):
-        stream_pos = stream.tell()
-
         if offset > -1:
             stream.seek(offset, 0)  # SEEK_SET
 
@@ -183,8 +216,6 @@ class CStructLexer:
             struct_class.data_byte_order,
             stream,
         ).values
-
-        stream.seek(stream_pos, 0)  # SEEK_SET
 
         try:
             dataclass_fields = [f.name for f in dataclasses.fields(struct_class)]
