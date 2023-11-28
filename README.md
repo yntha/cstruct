@@ -134,7 +134,7 @@ class EXClass:
     b: bytes
     c dataclasses.InitVar[int]
 
-    def on_read(self, c: int):
+    def on_read(self, stream, c: int):
         print("b is", self.b)
         
         self.c = b[0]

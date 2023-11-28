@@ -114,7 +114,8 @@ def _make_newclass(src_cls: type, struct_format: str, byte_order: str) -> type:
             on_read_cb = src_cls.__dict__.get("on_read", None)
 
             if on_read_cb is not None:
-                on_read_cb(self, *args)
+                # noinspection PyUnresolvedReferences
+                on_read_cb(self, self.stream, *args)
 
         @property
         def length(self):
@@ -138,6 +139,8 @@ def _make_newclass(src_cls: type, struct_format: str, byte_order: str) -> type:
     def _init(self, stream, *args, **kwargs):
         if stream is not None:
             return
+
+        self.stream = stream
 
         # add all InitVar fields to the kwargs
         for initvar in initvars:
