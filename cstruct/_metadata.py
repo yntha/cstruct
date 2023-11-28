@@ -15,6 +15,7 @@
 # --------------------------------------------------------------------------------------
 import dataclasses
 import enum
+import typing
 
 from dataclasses import dataclass
 
@@ -23,12 +24,21 @@ from dataclasses import dataclass
 class MetadataItem:
     format: str
     size: int
+    orig_value: typing.Any
 
     def __repr__(self):
         return str(self.__dict__)
 
     def __str__(self):
-        return f"{self.format} ({self.size} bytes)"
+        value_str = f"{self.orig_value}"
+
+        if repr(self.orig_value.__class__).startswith("<class 'cstruct.classwrapper."):
+            value_str = "\n" + str(self.orig_value)
+            value_str += "\n" + "-" * max(
+                map(lambda s: len(s) - 1, value_str.split("\n"))
+            )
+
+        return f"{self.format} ({self.size} bytes) = {value_str}"
 
 
 class StructMetadata:
@@ -74,8 +84,6 @@ def collect_metadata(class_obj: dataclass) -> StructMetadata:
             field_size += lexer.pad_bytes
             field_format = f"T[{orig_name}({field.type.primitive_format})]"
 
-        metadata.add_item(field.name, MetadataItem(field_format, field_size))
-
         if isinstance(field_value, list):
             value_list = []
 
@@ -92,5 +100,10 @@ def collect_metadata(class_obj: dataclass) -> StructMetadata:
             setattr(class_obj, field.name, field.type(field_value))
         else:
             setattr(class_obj, field.name, field_value)
+
+        metadata.add_item(
+            field.name,
+            MetadataItem(field_format, field_size, getattr(class_obj, field.name)),
+        )
 
     return metadata
