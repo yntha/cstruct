@@ -63,8 +63,16 @@ class CStructLexer:
             return self.format_ch == TYPEDEF_FORMAT_CH
 
     def __init__(
-        self, struct_class: type, data_format: str, data_byte_order: str, stream
+        self,
+        struct_class: type,
+        data_format: str,
+        data_byte_order: str,
+        stream,
+        offset: int = -1,
     ):
+        if offset > -1:
+            stream.seek(offset, 0)  # SEEK_SET
+
         self.data_format = data_format
         self.byte_order = "<" if data_byte_order == "little" else ">"
         self.stream = stream
@@ -72,8 +80,14 @@ class CStructLexer:
 
         self.pos = 0
         self.values = []
+        self.pad_bytes = 0
 
         self.parse()
+
+        # noinspection PyDataclass
+        dataclass_fields = [f.name for f in dataclasses.fields(struct_class)]
+
+        self.parsed_data = dict(zip(dataclass_fields, self.values))
 
     def parse(self):
         while self._has_tokens():
@@ -123,6 +137,11 @@ class CStructLexer:
                         ]
                     )
 
+                if token.format_ch == "x":
+                    self.pad_bytes += sum_size
+
+                    continue
+
                 self.values.append([vararr_values, token.struct_format, sum_size])
 
                 continue
@@ -163,6 +182,7 @@ class CStructLexer:
                     continue
                 for _ in range(token.repeat_count):
                     if token.format_ch == "x":
+                        self.pad_bytes += 1
                         self.stream.read(1)
 
                         continue
@@ -181,6 +201,7 @@ class CStructLexer:
                 continue
 
             if token.format_ch == "x":
+                self.pad_bytes += 1
                 self.stream.read(1)
 
                 continue
@@ -204,25 +225,6 @@ class CStructLexer:
     # noinspection PyDataclass
     def get_typdef_type(self) -> type:
         return dataclasses.fields(self.struct_class)[self.pos - 1].type
-
-    @classmethod
-    def parse_struct(cls, struct_class, stream, offset: int = -1):
-        if offset > -1:
-            stream.seek(offset, 0)  # SEEK_SET
-
-        values = cls(
-            struct_class,
-            struct_class.primitive_format,
-            struct_class.data_byte_order,
-            stream,
-        ).values
-
-        try:
-            dataclass_fields = [f.name for f in dataclasses.fields(struct_class)]
-
-            return dict(zip(dataclass_fields, values))
-        except TypeError:
-            raise InvalidFormat("The data format does not match the struct.")
 
     def _next_literal(self) -> str:
         literal = self.data_format[self.pos]

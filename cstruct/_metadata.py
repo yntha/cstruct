@@ -67,8 +67,11 @@ def collect_metadata(class_obj: dataclass) -> StructMetadata:
         field_size = field_object[2]
 
         if repr(field.type).startswith("<class 'cstruct.classwrapper."):
+            lexer = getattr(field.type, "_lexer")
+
             # noinspection PyProtectedMember
             orig_name = field.type._source_class.__name__
+            field_size += lexer.pad_bytes
             field_format = f"T[{orig_name}({field.type.primitive_format})]"
 
         metadata.add_item(field.name, MetadataItem(field_format, field_size))

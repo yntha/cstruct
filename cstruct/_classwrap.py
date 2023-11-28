@@ -73,6 +73,7 @@ def _gen_superclass(cls: type) -> type:
 
 
 class ClassWrapperMeta(type):
+    # noinspection PyUnresolvedReferences
     def __repr__(cls):
         return f"<class 'cstruct.classwrapper.{cls._source_class.__name__}'>"
 
@@ -81,16 +82,18 @@ def _make_newclass(src_cls: type, struct_format: str, byte_order: str) -> type:
     @dataclass
     class newclass(_gen_superclass(src_cls), metaclass=ClassWrapperMeta):
         _source_class = src_cls
+        _lexer = None
         primitive_format = struct_format
         data_byte_order = byte_order
 
         # noinspection PyArgumentList
         def __new__(cls, stream, offset: int = -1):
             self = super().__new__(cls)
-
-            cls.__init__(
-                self, None, **(CStructLexer.parse_struct(cls, stream, offset=offset))
+            self.__class__._lexer = CStructLexer(
+                cls, self.primitive_format, self.data_byte_order, stream, offset
             )
+
+            cls.__init__(self, None, **self._lexer.parsed_data)
 
             return self
 
