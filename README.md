@@ -37,82 +37,174 @@ You must also specify the field type as either `leb128`(generic), `uleb128`(unsi
 ```
 
 ### Example Usage
+For all the standard struct format characters, see https://docs.python.org/3/library/struct.html?highlight=struct#format-characters.
+
+#### Basic Usage
+```python
+import cstruct
+import io
+
+# can also be imported as `from cstruct import cstruct` to avoid analyzer issues.
+
+@cstruct("IIb")
+class EXClass:
+    a: int
+    b: int
+    c: int
+
+datastream = io.BytesIO(bytes.fromhex("01000000 02000000 03"))
+parsed = EXClass(datastream)
+
+print(parsed.a)  # 1
+print(parsed.b)  # 2
+print(parsed.c)  # 3
+
+print(parsed[0])  # 1
+print(parsed[1])  # 2
+print(parsed[2])  # 3
+
+print(parsed.meta[0])  # 'I (4 bytes)'
+print(parsed.meta[1])  # 'I (4 bytes)'
+print(parsed.meta[2])  # 'b (1 byte)'
+
+print(parsed.meta.a.size)  # 4
+print(parsed.meta.b.format)  # 'I'
+
+print(parsed.length)  # 9
+```
+
+#### Using Variable Length Fields
+```python
+from cstruct import cstruct
+import io
+
+@cstruct("II(0)b")
+class EXClass:
+    a: int
+    b: int
+    c: list
+
+datastream = io.BytesIO(bytes.fromhex("03000000 02000000 03 04 05"))
+parsed = EXClass(datastream)
+
+print(parsed.a)  # 3
+print(parsed.b)  # 2
+print(parsed.c)  # [3, 4, 5]
+```
+Variable length fields have the following syntax: `(index)type`. Index refers to the index of the member that specifies the length of the variable length field. If length is 0, then the field will be None. If length is greater than 0, then the field will be a list of the specified type.
+
+***Note:*** *If the type of the vararr is 's', then the result will be a byte string, not a list.*
+
+#### Enums As Fields
+Enums are supported as fields, and the value of the field will result in a member of the enum:
 ```python
 import cstruct
 import enum
-import dataclasses
+import io
 
-
-class test_enum(enum.IntEnum):
+class ExEnum(enum.IntEnum):
     a = 1
     b = 2
     c = 3
 
-
-# 4s   - next 4 bytes as a byte string
-# I    - next unsigned int
-# (1)b - next x number of signed byte values, where x is the repeat count specified
-#        by the 2nd(0-indexed) value. if the repeat count is 0, then this will be
-#        None, else it will be a list of signed byte values.
-# 8s   - next x(1) number of bytes as a byte string
-# I    - next unsigned int
-# I    - next unsigned int
-# i    - next signed int
-# i    - next signed int
-@cstruct("4sI(1)b(1)sIIiiH", "little")
-class x:
-    a: bytes
+@cstruct("IH(1)b")
+class EXClass:
+    a: int
     b: int
-    z: list
-    c: bytes
-    d: int
-    e: int
-    f: int
-    g: int
-    h: test_enum  # you can use enums, too. the value will be the enum member
-    z: dataclasses.InitVar[int]
-    
-    # post processing can be done by defining an `on_read` function.
-    def on_read(self, z: int):
-        assert self.b == 0x00000008
-        print("z is", z)
+    c: ExEnum
 
+datastream = io.BytesIO(bytes.fromhex("01000000 0300 03 01 02"))
+parsed = EXClass(datastream)
 
-# you can extend cstruct classes through inheritance:
-@cstruct("B")
-class y(x):
-    i: int
-
-
-import io
-
-s = io.BytesIO(
-    bytes.fromhex(
-        "28 46 1c e8    08 00 00 00   c2 cc ee ff aa bb cc 11   9f7e683cdd20189e  c1 54 92 4a 44 ab 25 be 05 46 eb ff 2c d8 c4 c5  0100  01"
-    )
-)
-parsed = x(s)
-parsed2 = y(s)
-print(parsed.__dict__)
-# output:
-# {'a': b'(F\x1c\xe8', 'b': 8, 'z': [-62, -52, -18, -1, -86, -69, -52, 17], 'c': b'\x9f~h<\xdd \x18\x9e', 'd': 1251103937, 'e': 3190139716, 'f': -1358331, 'g': -976955348, 'h': <test_enum.a: 1>}
-print(parsed2.__dict__)
-# output:
-# {'a': b'(F\x1c\xe8', 'b': 8, 'z': [-62, -52, -18, -1, -86, -69, -52, 17], 'c': b'\x9f~h<\xdd \x18\x9e', 'd': 1251103937, 'e': 3190139716, 'f': -1358331, 'g': -976955348, 'h': <test_enum.a: 1>, 'i': 1}
-
-# you can also see the size and the string format of the fields:
-print(parsed.meta.c.size)  # 8
-print(parsed.meta.["c"].format)  # 's'
-print(parsed.meta[1])  # 'I (4 bytes)'
-
-# cstruct classes are also sequences:
-print(parsed[0])  # b'(F\x1c\xe8'
+print(parsed.a)  # 1
+print(parsed.b)  # 2
+print(parsed.c)  # [<ExEnum.c: 3>, <ExEnum.a: 1>, <ExEnum.b: 2>]
 ```
 
-For all the standard struct format characters, see https://docs.python.org/3/library/struct.html?highlight=struct#format-characters.
+#### Post Processing
+You can define an `on_read` function to do post processing on the data after it has been read:
+```python
+import cstruct
+import io
+import dataclasses
+
+@cstruct("I8s")
+class EXClass:
+    a: int
+    b: bytes
+    c dataclasses.InitVar[int]
+
+    def on_read(self, c: int):
+        print("b is", self.b)
+        
+        self.c = b[0]
+
+datastream = io.BytesIO(bytes.fromhex("01000000 0102030405060708"))
+parsed = EXClass(datastream)
+
+print(parsed.a)  # 1
+print(parsed.b)  # b'\x01\x02\x03\x04\x05\x06\x07\x08'
+print(parsed.c)  # 1
+```
+
+#### Inheritance
+You can extend cstruct classes through inheritance:
+```python
+import cstruct
+import io
+
+@cstruct("I")
+class EXClass:
+    a: int
+
+@cstruct("B")
+class EXClass2(EXClass):
+    b: int
+
+datastream = io.BytesIO(bytes.fromhex("01000000 02"))
+parsed = EXClass2(datastream)
+
+print(parsed.a)  # 1
+print(parsed.b)  # 2
+
+print(parsed.length)  # 5
+```
+Note that the `on_read` function isn't inherited between classes.
+
+#### Using CStruct Classes As Fields
+You can use cstruct classes as fields in other cstruct classes:
+```python
+import cstruct
+import io
+
+@cstruct("I")
+class EXClass:
+    a: int
+
+@cstruct("B")
+class EXClass2:
+    b: int
+
+@cstruct("TT")
+class EXClass3:
+    c: EXClass
+    d: EXClass2
+
+datastream = io.BytesIO(bytes.fromhex("01000000 02"))
+parsed = EXClass3(datastream)
+
+print(parsed.c.a)  # 1
+print(parsed.d.b)  # 2
+
+print(parsed.meta.c)  # T[EXClass(I)] (4 bytes)
+```
+
+### Real World Example
+Parsing an ELF File header:
+See [elf_header.py](examples/elf_header.py).
 
 ### To-Do List
 * Make cstruct classes immutable
 * Eventually make them mutable with the introduction of the cstruct serializer(python dataclass -> binary data)
-* Add support for bit fields
-* Rewrite this readme to include clear examples and real world scenarios.
+* Add support for bit fields 
+* ~~Rewrite this readme to include clear examples and real world scenarios.~~
